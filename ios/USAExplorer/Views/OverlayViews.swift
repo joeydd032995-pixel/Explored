@@ -302,19 +302,25 @@ struct OverlayFeatureDetailSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var confirmed = false
+    @State private var confirmBounce = false
 
     var body: some View {
         ZStack {
-            Color(red: 10/255, green: 15/255, blue: 30/255).ignoresSafeArea()
+            AppTheme.primaryNavy.ignoresSafeArea()
 
             VStack(alignment: .leading, spacing: 16) {
+                // Header: kind icon + title.
                 HStack(spacing: 12) {
                     Image(systemName: feature.kind.systemImage)
                         .font(.title3)
-                        .foregroundStyle(Color(red: 245/255, green: 197/255, blue: 24/255))
+                        .foregroundStyle(AppTheme.gold)
                         .frame(width: 44, height: 44)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .background(AppTheme.elevated)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+                        )
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(feature.title)
@@ -328,14 +334,43 @@ struct OverlayFeatureDetailSheet: View {
                     Spacer()
                 }
 
-                Text(feature.subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.8))
+                if !feature.subtitle.isEmpty {
+                    Text(feature.subtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+
+                // Confidence meter + verification summary.
+                HStack(spacing: 16) {
+                    ZStack {
+                        RingGauge(progress: feature.confidence, size: 64, lineWidth: 6)
+                        Text(String(format: "%.0f%%", feature.confidence * 100))
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.white)
+                    }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        AppTheme.eyebrow("Confidence")
+                        Text("\(feature.confirmations) verifications")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                        Text("Updated \(Self.timeLabel(feature.lastVerified))")
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.5))
+                    }
+
+                    Spacer()
+                }
+                .padding(14)
+                .background(AppTheme.elevated)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+                )
 
                 VStack(spacing: 8) {
-                    detailRow(label: "Confidence", value: String(format: "%.0f%%", feature.confidence * 100))
-                    detailRow(label: "Verifications", value: "\(feature.confirmations)")
-                    detailRow(label: "Last verified", value: Self.timeLabel(feature.lastVerified))
                     detailRow(label: "Provenance", value: feature.source)
 
                     if let expiresAt = feature.expiresAt {
@@ -346,7 +381,7 @@ struct OverlayFeatureDetailSheet: View {
                 }
                 .padding(12)
                 .background(Color.white.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 Button {
                     confirmFeature()
@@ -358,11 +393,13 @@ struct OverlayFeatureDetailSheet: View {
                     .fontWeight(.bold)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
-                    .background(confirmed ? Color.white.opacity(0.12) : Color(red: 245/255, green: 197/255, blue: 24/255))
+                    .background(confirmed ? Color.white.opacity(0.12) : AppTheme.gold)
                     .foregroundStyle(confirmed ? .white : .black)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
                 .disabled(confirmed)
+                .scaleEffect(confirmBounce ? 1.04 : 1)
+                .animation(.spring(response: 0.3, dampingFraction: 0.5), value: confirmBounce)
 
                 Spacer()
             }
@@ -379,6 +416,7 @@ struct OverlayFeatureDetailSheet: View {
             Text(value)
                 .font(.caption.weight(.semibold).monospaced())
                 .foregroundStyle(.white)
+                .multilineTextAlignment(.trailing)
         }
     }
 
@@ -387,9 +425,12 @@ struct OverlayFeatureDetailSheet: View {
             let provider = registry.provider(feature.providerId)
             let updated = await provider?.confirm(feature)
             if updated != nil {
+                confirmBounce = true
                 HapticService.shared.reportConfirmed()
                 confirmed = true
                 onUpdated()
+                try? await Task.sleep(for: .seconds(0.25))
+                confirmBounce = false
             }
         }
     }

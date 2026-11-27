@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// The Layers tab: overlay registry status, hierarchical discovery progress
-/// against real-world boundaries, and the creator marketplace.
+/// against real-world boundaries, and the creator marketplace — presented as
+/// a dashboard on the shared navy/gold token system.
 struct LayersTabView: View {
     @State private var registry = OverlayRegistry.shared
     @State private var engine = DiscoveryProgressEngine.shared
@@ -13,14 +14,13 @@ struct LayersTabView: View {
     @State private var countyProgresses: [DiscoveryProgressEngine.RegionProgress] = []
     @State private var cityProgresses: [DiscoveryProgressEngine.RegionProgress] = []
     @State private var national: DiscoveryProgressEngine.NationalProgress?
-
-    private let surface = Color(red: 0.07, green: 0.09, blue: 0.16)
-    private let gold = Color(red: 245/255, green: 197/255, blue: 24/255)
+    @State private var countiesExpanded = false
+    @State private var citiesExpanded = false
 
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(red: 10/255, green: 15/255, blue: 30/255).ignoresSafeArea()
+                AppTheme.primaryNavy.ignoresSafeArea()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -70,16 +70,26 @@ struct LayersTabView: View {
 
     private var nationalCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("UNITED STATES")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.white.opacity(0.5))
+            AppTheme.eyebrow("United States")
 
             if let national {
                 Text(national.percent < 0.01
                      ? String(format: "%.4f%%", national.percent)
                      : String(format: "%.2f%%", national.percent))
-                    .font(.system(size: 44, weight: .heavy, design: .rounded))
-                    .foregroundStyle(gold)
+                    .font(AppTheme.display(52))
+                    .foregroundStyle(AppTheme.gold)
+                    .animation(.spring(response: 0.45, dampingFraction: 0.8), value: national.percent)
+
+                // Thin gold accent bar.
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [AppTheme.gold, AppTheme.goldHighlight],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: 64, height: 4)
 
                 Text("\(national.claimedHexes) H3 cells claimed · res 7 grid")
                     .font(.caption)
@@ -89,18 +99,24 @@ struct LayersTabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(18)
         .background(
-            LinearGradient(colors: [gold.opacity(0.14), surface], startPoint: .topLeading, endPoint: .bottomTrailing)
+            ZStack {
+                LinearGradient(colors: [AppTheme.gold.opacity(0.14), AppTheme.surface], startPoint: .topLeading, endPoint: .bottomTrailing)
+                HexParticleField()
+            }
         )
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .strokeBorder(AppTheme.gold.opacity(0.12), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
     }
 
     // MARK: Discovery progress
 
     private var progressSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Discovery Progress")
-                .font(.headline)
-                .foregroundStyle(.white)
+            AppTheme.eyebrow("Discovery Progress")
 
             Text("Unique H3 cells claimed inside each state's authoritative boundary polygon. Totals are exact once the polygon polyfill finishes — ≈ marks the interim area estimate. Transit at highway speed cannot complete a state; deliberate exploration can.")
                 .font(.caption)
@@ -120,28 +136,28 @@ struct LayersTabView: View {
     }
 
     private func stateRow(_ progress: DiscoveryProgressEngine.StateProgress) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                Text("\(progress.stateId) · \(progress.name)")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.white)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                RingGauge(progress: progress.percent / 100, size: 26, lineWidth: 3)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(progress.stateId) · \(progress.name)")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    exactBadge(usesExact: progress.usesExactDenominator)
+                }
+
                 Spacer()
+
                 Text(progress.percentLabel)
                     .font(.subheadline.weight(.bold).monospaced())
-                    .foregroundStyle(gold)
+                    .foregroundStyle(AppTheme.gold)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.08))
-                    Capsule()
-                        .fill(LinearGradient(colors: [gold, .orange], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(4, geo.size.width * min(1, progress.percent / 100)))
-                }
-            }
-            .frame(height: 6)
+            ThemedProgressBar(percent: progress.percent)
 
-            Text("\(progress.claimedHexes)/\(progress.totalHexes) cells\(progress.usesExactDenominator ? "" : " ≈") · \(progress.countiesVisited) counties · \(progress.citiesVisited) cities · \(Int(progress.unexploredKm2)) km² left")
+            Text("\(progress.claimedHexes)/\(progress.totalHexes) cells · \(progress.countiesVisited) counties · \(progress.citiesVisited) cities · \(Int(progress.unexploredKm2)) km² left")
                 .font(.caption2.monospaced())
                 .foregroundStyle(.white.opacity(0.4))
 
@@ -152,8 +168,30 @@ struct LayersTabView: View {
             }
         }
         .padding(14)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
+    }
+
+    /// Solid gold "EXACT" once polyfill finishes; dashed muted "≈" meanwhile.
+    private func exactBadge(usesExact: Bool) -> some View {
+        Text(usesExact ? "EXACT" : "≈ EST")
+            .font(.system(size: 8, weight: .bold))
+            .tracking(0.5)
+            .foregroundStyle(usesExact ? AppTheme.primaryNavy : AppTheme.goldMuted)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(usesExact ? AppTheme.gold : Color.clear)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .strokeBorder(AppTheme.goldMuted.opacity(usesExact ? 0 : 0.6),
+                                  style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+            )
     }
 
     private static let visitFormatter: DateFormatter = {
@@ -179,19 +217,40 @@ struct LayersTabView: View {
     private var regionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             if !countyProgresses.isEmpty {
-                Text("Counties")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                ForEach(countyProgresses) { regionRow($0) }
+                DisclosureGroup(isExpanded: $countiesExpanded) {
+                    VStack(spacing: 8) {
+                        ForEach(countyProgresses) { regionRow($0) }
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    sectionHeader("Counties", count: countyProgresses.count)
+                }
             }
 
             if !cityProgresses.isEmpty {
-                Text("Cities & Places")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .padding(.top, 4)
-                ForEach(cityProgresses) { regionRow($0) }
+                DisclosureGroup(isExpanded: $citiesExpanded) {
+                    VStack(spacing: 8) {
+                        ForEach(cityProgresses) { regionRow($0) }
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    sectionHeader("Cities & Places", count: cityProgresses.count)
+                }
             }
+        }
+        .tint(.white.opacity(0.4))
+    }
+
+    private func sectionHeader(_ title: String, count: Int) -> some View {
+        HStack {
+            AppTheme.eyebrow(title)
+            Text("\(count)")
+                .font(.caption2.weight(.bold).monospaced())
+                .foregroundStyle(AppTheme.gold)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(AppTheme.gold.opacity(0.15))
+                .clipShape(Capsule())
         }
     }
 
@@ -208,154 +267,200 @@ struct LayersTabView: View {
                 Spacer()
                 Text(region.percentLabel)
                     .font(.caption.weight(.bold).monospaced())
-                    .foregroundStyle(gold)
+                    .foregroundStyle(AppTheme.gold)
             }
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.white.opacity(0.08))
-                    Capsule()
-                        .fill(LinearGradient(colors: [gold, .orange], startPoint: .leading, endPoint: .trailing))
-                        .frame(width: max(3, geo.size.width * min(1, region.percent / 100)))
-                }
-            }
-            .frame(height: 5)
+            ThemedProgressBar(percent: region.percent, height: 6)
 
-            Text("\(region.claimedHexes)/\(region.totalHexes) cells\(region.usesExactDenominator ? "" : " ≈") · \(String(format: "%.1f", region.unexploredKm2)) km² left")
+            Text("\(region.claimedHexes)/\(region.totalHexes) cells · \(String(format: "%.1f", region.unexploredKm2)) km² left")
                 .font(.caption2.monospaced())
                 .foregroundStyle(.white.opacity(0.4))
         }
         .padding(12)
-        .background(surface)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(AppTheme.elevated)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: Overlays
 
     private var overlaySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Active Overlays")
-                .font(.headline)
-                .foregroundStyle(.white)
+            AppTheme.eyebrow("Active Overlays")
 
             ForEach(registry.providers, id: \.id) { provider in
-                HStack(spacing: 12) {
-                    Image(systemName: provider.systemImage)
-                        .font(.subheadline)
-                        .foregroundStyle(registry.isEnabled(provider.id) ? gold : .white.opacity(0.3))
-                        .frame(width: 34, height: 34)
-                        .background(surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 9))
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(provider.name)
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                        Text(provider.summary)
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.45))
-                            .lineLimit(2)
-                    }
-
-                    Spacer()
-
-                    Text("\(provider.featureCount)")
-                        .font(.caption.weight(.bold).monospaced())
-                        .foregroundStyle(gold)
-                }
-                .padding(12)
-                .background(surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                overlayRow(provider)
             }
 
-            Text("Enable layers from the filter button on the map. New providers register through the plugin interface without core changes.")
+            Text("Enable layers from the chips or filter button on the map. New providers register through the plugin interface without core changes.")
                 .font(.caption2)
                 .foregroundStyle(.white.opacity(0.4))
         }
+    }
+
+    private func overlayRow(_ provider: any OverlayProvider) -> some View {
+        let enabled = registry.isEnabled(provider.id)
+
+        return HStack(spacing: 12) {
+            // Sensitive providers carry a danger accent on their left edge.
+            if provider.isSensitive {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppTheme.danger.opacity(0.8))
+                    .frame(width: 3, height: 34)
+            }
+
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: provider.systemImage)
+                    .font(.subheadline)
+                    .foregroundStyle(enabled ? AppTheme.gold : .white.opacity(0.3))
+                    .frame(width: 34, height: 34)
+                    .background(AppTheme.elevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+
+                StatusDot(state: enabled ? (provider.isSensitive ? .idle : .active) : .muted)
+                    .offset(x: 4, y: 4)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(provider.name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                    if provider.isSensitive {
+                        Image(systemName: "shield.lefthalf.filled")
+                            .font(.system(size: 9))
+                            .foregroundStyle(AppTheme.danger)
+                    }
+                }
+                Text(provider.summary)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.45))
+                    .lineLimit(2)
+            }
+
+            Spacer()
+
+            Text("\(provider.featureCount)")
+                .font(.caption.weight(.bold).monospaced())
+                .foregroundStyle(AppTheme.primaryNavy)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(enabled ? AppTheme.gold : AppTheme.gold.opacity(0.25))
+                .clipShape(Capsule())
+        }
+        .padding(12)
+        .background(AppTheme.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
+        )
     }
 
     // MARK: Marketplace
 
     private var marketplaceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Creator Marketplace")
-                .font(.headline)
-                .foregroundStyle(.white)
+            AppTheme.eyebrow("Creator Marketplace")
 
-            VStack(spacing: 8) {
-                marketplaceEntry(
-                    icon: "storefront", title: "Browse layers",
-                    subtitle: "Search, review, and install community layers",
-                    badge: marketplace.catalog.isEmpty ? nil : "\(marketplace.catalog.count)",
-                    action: { showBrowse = true }
-                )
-
-                if !marketplace.installed.isEmpty {
-                    marketplaceEntry(
-                        icon: "square.on.square.intersection.dashed",
-                        title: "Installed layers (\(marketplace.installed.count))",
-                        subtitle: "Manage the community layers you've added",
-                        badge: nil,
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    marketplaceCard(
+                        icon: "storefront",
+                        title: "Browse Layers",
+                        subtitle: "Search, review, and install community layers",
+                        badge: marketplace.catalog.isEmpty ? nil : "\(marketplace.catalog.count) available",
+                        prominent: true,
                         action: { showBrowse = true }
                     )
+
+                    if !marketplace.installed.isEmpty {
+                        marketplaceCard(
+                            icon: "square.on.square.intersection.dashed",
+                            title: "Installed",
+                            subtitle: "Manage the community layers you've added",
+                            badge: "\(marketplace.installed.count) installed",
+                            prominent: false,
+                            action: { showBrowse = true }
+                        )
+                    }
+
+                    marketplaceCard(
+                        icon: "paintbrush.pointed.fill",
+                        title: "Creator Studio",
+                        subtitle: "Author a layer, drop pins, publish it",
+                        badge: nil,
+                        prominent: false,
+                        action: { showCreatorStudio = true }
+                    )
+
+                    marketplaceCard(
+                        icon: "chart.bar.fill",
+                        title: "My Layers",
+                        subtitle: "Installs and ratings for what you've published",
+                        badge: nil,
+                        prominent: false,
+                        action: { showMyLayers = true }
+                    )
                 }
-
-                marketplaceEntry(
-                    icon: "paintbrush.pointed.fill", title: "Creator Studio",
-                    subtitle: "Author a layer, drop pins, publish it",
-                    badge: nil,
-                    action: { showCreatorStudio = true }
-                )
-
-                marketplaceEntry(
-                    icon: "chart.bar.fill", title: "My Layers",
-                    subtitle: "Installs and ratings for what you've published",
-                    badge: nil,
-                    action: { showMyLayers = true }
-                )
+                .padding(.horizontal, 1)
+                .padding(.vertical, 4)
             }
         }
     }
 
-    private func marketplaceEntry(icon: String, title: String, subtitle: String, badge: String?, action: @escaping () -> Void) -> some View {
+    private func marketplaceCard(
+        icon: String,
+        title: String,
+        subtitle: String,
+        badge: String?,
+        prominent: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
-            HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 Image(systemName: icon)
-                    .font(.subheadline)
-                    .foregroundStyle(gold)
-                    .frame(width: 36, height: 36)
-                    .background(surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 9))
+                    .font(.title3)
+                    .foregroundStyle(prominent ? AppTheme.primaryNavy : AppTheme.gold)
+                    .frame(width: 40, height: 40)
+                    .background(prominent ? AppTheme.gold : AppTheme.gold.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                    Text(subtitle)
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.45))
-                        .lineLimit(2)
-                }
+                Text(title)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(.white)
 
-                Spacer()
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.5))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
 
                 if let badge {
                     Text(badge)
                         .font(.caption2.weight(.bold).monospaced())
-                        .foregroundStyle(Color(red: 10/255, green: 15/255, blue: 30/255))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(gold)
-                        .clipShape(Capsule())
+                        .foregroundStyle(AppTheme.gold)
+                        .lineLimit(1)
                 } else {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.white.opacity(0.3))
+                    Text("Open")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.35))
                 }
             }
-            .padding(12)
-            .background(surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(14)
+            .frame(width: 190, alignment: .topLeading)
+            .background(
+                LinearGradient(
+                    colors: [AppTheme.gold.opacity(prominent ? 0.16 : 0.08), AppTheme.surface],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(AppTheme.gold.opacity(prominent ? 0.3 : 0.1), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.35), radius: 12, y: 6)
         }
     }
 }

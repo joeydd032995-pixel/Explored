@@ -62,19 +62,7 @@ struct StatCardView: View {
 struct GoldProgressBar: View {
     let progress: Double
 
-    private let gold = Color(red: 245/255, green: 197/255, blue: 24/255)
-
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule()
-                    .fill(Color.white.opacity(0.08))
-
-                Capsule()
-                    .fill(gold)
-                    .frame(width: geo.size.width * min(max(progress, 0), 1))
-            }
-        }
-        .frame(height: 6)
+        ThemedProgressBar(percent: progress * 100)
     }
 }

@@ -205,14 +205,22 @@ final class HexFogService {
     ) -> ([FogHexPolygon], [FogGlowCircle]) {
         guard !discoveredHexes.isEmpty else { return ([], []) }
 
-        let exact = region.span.latitudeDelta <= 5
+        let latDelta = region.span.latitudeDelta
 
-        if exact {
+        if latDelta <= 5 {
             let cells = Array(discoveredHexes.compactMap(H3Cell.init).prefix(maxFogPolygons))
             return (polygons(for: cells, kind: .discovered), [])
         }
 
-        let baseResolution: H3Cell.Resolution = region.span.latitudeDelta > 20 ? .res2 : .res4
+        // Cross-fade band: the glow lingers underneath while exact hexes
+        // sharpen, so the switch never pops.
+        var exactHexes: [FogHexPolygon] = []
+        if latDelta <= 8 {
+            let cells = Array(discoveredHexes.compactMap(H3Cell.init).prefix(maxFogPolygons))
+            exactHexes = polygons(for: cells, kind: .discovered)
+        }
+
+        let baseResolution: H3Cell.Resolution = latDelta > 20 ? .res2 : .res4
 
         // Promote discovered res-7 cells to the zoom-appropriate ancestor.
         var promoted = Set<String>()
@@ -222,7 +230,7 @@ final class HexFogService {
             promoted.insert(parent.description)
         }
 
-        guard !promoted.isEmpty else { return ([], []) }
+        guard !promoted.isEmpty else { return (exactHexes, []) }
 
         var circles: [FogGlowCircle] = []
         for hexId in promoted.sorted() {
@@ -231,7 +239,7 @@ final class HexFogService {
             let coords = boundary.map { CLLocationCoordinate2D(latitude: $0.latitudeDegs, longitude: $0.longitudeDegs) }
             circles.append(FogGlowCircle(hexId: hexId, coords: coords))
         }
-        return ([], Array(circles.prefix(maxFogPolygons)))
+        return (exactHexes, Array(circles.prefix(maxFogPolygons)))
     }
 
     private static func polygons(for cells: [H3Cell], kind: FogPolygonKind) -> [FogHexPolygon] {
@@ -270,5 +278,30 @@ nonisolated struct FogGlowCircle: Sendable, Identifiable {
         self.center = CLLocationCoordinate2D(latitude: lat, longitude: lng)
         let centerLoc = CLLocation(latitude: lat, longitude: lng)
         self.radius = coords.map { centerLoc.distance(from: CLLocation(latitude: $0.latitude, longitude: $0.longitude)) }.max() ?? 50_000
+    }
+}
+
+/// A short-lived expanding ring celebrating a fresh hex claim. Phase runs
+/// 0 (just claimed) → 1 (gone); the map re-renders it as it advances.
+nonisolated struct ClaimPulse: Sendable, Identifiable {
+    static let titlePrefix = "claim_pulse|"
+
+    let id: String
+    let center: CLLocationCoordinate2D
+    let radius: CLLocationDistance
+    var phase: Double
+
+    init(center: CLLocationCoordinate2D, radius: CLLocationDistance) {
+        self.id = "pulse-\(UUID().uuidString)"
+        self.center = center
+        self.radius = radius
+        self.phase = 0
+    }
+
+    var isFinished: Bool { phase >= 1 }
+
+    /// The ring physically grows as it fades.
+    var animatedRadius: CLLocationDistance {
+        radius * (0.55 + 0.45 * phase)
     }
 }
